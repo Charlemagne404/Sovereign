@@ -32,7 +32,10 @@ export const IPC_CHANNELS = {
     listStartupItems: 'fixer:listStartupItems',
     disableStartupItem: 'fixer:disableStartupItem',
     listServices: 'fixer:listServices',
+    startService: 'fixer:startService',
+    stopService: 'fixer:stopService',
     restartService: 'fixer:restartService',
+    runUtilityAction: 'fixer:runUtilityAction',
     refreshDiagnostics: 'fixer:refreshDiagnostics'
   }
 } as const;
@@ -63,6 +66,20 @@ export interface RestartServiceRequest {
   displayName: string;
 }
 
+export interface StartServiceRequest {
+  serviceName: string;
+  displayName: string;
+}
+
+export interface StopServiceRequest {
+  serviceName: string;
+  displayName: string;
+}
+
+export interface RunUtilityActionRequest {
+  action: 'flush-dns' | 'restart-explorer' | 'empty-recycle-bin';
+}
+
 export interface IpcRequestMap {
   [IPC_CHANNELS.dashboard.getSnapshot]: undefined;
   [IPC_CHANNELS.events.list]: EventsListRequest | undefined;
@@ -75,7 +92,10 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.fixer.listStartupItems]: undefined;
   [IPC_CHANNELS.fixer.disableStartupItem]: DisableStartupItemRequest;
   [IPC_CHANNELS.fixer.listServices]: undefined;
+  [IPC_CHANNELS.fixer.startService]: StartServiceRequest;
+  [IPC_CHANNELS.fixer.stopService]: StopServiceRequest;
   [IPC_CHANNELS.fixer.restartService]: RestartServiceRequest;
+  [IPC_CHANNELS.fixer.runUtilityAction]: RunUtilityActionRequest;
   [IPC_CHANNELS.fixer.refreshDiagnostics]: undefined;
 }
 
@@ -91,7 +111,10 @@ export interface IpcResponseMap {
   [IPC_CHANNELS.fixer.listStartupItems]: StartupItem[];
   [IPC_CHANNELS.fixer.disableStartupItem]: FixActionResult;
   [IPC_CHANNELS.fixer.listServices]: ServiceSummary[];
+  [IPC_CHANNELS.fixer.startService]: FixActionResult;
+  [IPC_CHANNELS.fixer.stopService]: FixActionResult;
   [IPC_CHANNELS.fixer.restartService]: FixActionResult;
+  [IPC_CHANNELS.fixer.runUtilityAction]: FixActionResult;
   [IPC_CHANNELS.fixer.refreshDiagnostics]: FixActionResult;
 }
 
@@ -113,7 +136,10 @@ export interface DesktopApi {
   listStartupItems(): Promise<StartupItem[]>;
   disableStartupItem(request: DisableStartupItemRequest): Promise<FixActionResult>;
   listServices(): Promise<ServiceSummary[]>;
+  startService(request: StartServiceRequest): Promise<FixActionResult>;
+  stopService(request: StopServiceRequest): Promise<FixActionResult>;
   restartService(request: RestartServiceRequest): Promise<FixActionResult>;
+  runUtilityAction(request: RunUtilityActionRequest): Promise<FixActionResult>;
   refreshDiagnostics(): Promise<FixActionResult>;
   onDashboardUpdated(listener: (snapshot: SystemMetricsSnapshot) => void): () => void;
   onEventsUpdated(listener: (events: WatchdogEvent[]) => void): () => void;

@@ -475,6 +475,12 @@ table {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.actions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .settings-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -589,6 +595,49 @@ table {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.quick-action-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 220px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quick-action-card.caution {
+  background: linear-gradient(180deg, rgba(215, 179, 123, 0.08), rgba(255, 255, 255, 0.03));
+  border-color: rgba(215, 179, 123, 0.16);
+}
+
+.quick-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quick-action-copy h3 {
+  font-size: 1.05rem;
+  line-height: 1.16;
+}
+
+.quick-action-copy p,
+.quick-action-copy span {
+  color: var(--text-secondary);
+}
+
+.quick-action-copy span {
+  font-size: 0.88rem;
 }
 
 .trend-card,
@@ -1405,6 +1454,10 @@ tbody tr[tabindex]:hover,
   .core-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .quick-actions-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1320px) {
@@ -1423,6 +1476,7 @@ tbody tr[tabindex]:hover,
 
   .trend-grid,
   .workload-rankings,
+  .quick-actions-grid,
   .settings-grid,
   .settings-section-grid,
   .settings-section-grid.compact {

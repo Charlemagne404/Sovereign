@@ -6,6 +6,9 @@ import type {
   ExecuteTempCleanupRequest,
   KillProcessRequest,
   OpenProcessLocationRequest,
+  RunUtilityActionRequest,
+  StartServiceRequest,
+  StopServiceRequest,
   RestartServiceRequest,
   UpdateSettingsRequest
 } from '@shared/ipc';
@@ -54,9 +57,24 @@ const api: DesktopApi = {
     ) as Promise<FixActionResult>,
   listServices: () =>
     ipcRenderer.invoke(IPC_CHANNELS.fixer.listServices) as Promise<ServiceSummary[]>,
+  startService: (request: StartServiceRequest) =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.fixer.startService,
+      request
+    ) as Promise<FixActionResult>,
+  stopService: (request: StopServiceRequest) =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.fixer.stopService,
+      request
+    ) as Promise<FixActionResult>,
   restartService: (request: RestartServiceRequest) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.fixer.restartService,
+      request
+    ) as Promise<FixActionResult>,
+  runUtilityAction: (request: RunUtilityActionRequest) =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.fixer.runUtilityAction,
       request
     ) as Promise<FixActionResult>,
   refreshDiagnostics: () =>

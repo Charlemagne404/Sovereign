@@ -7,6 +7,9 @@ import type {
   ExecuteTempCleanupRequest,
   KillProcessRequest,
   OpenProcessLocationRequest,
+  RunUtilityActionRequest,
+  StartServiceRequest,
+  StopServiceRequest,
   RestartServiceRequest,
   UpdateSettingsRequest
 } from '@shared/ipc';
@@ -38,7 +41,10 @@ const HANDLED_CHANNELS = [
   IPC_CHANNELS.fixer.listStartupItems,
   IPC_CHANNELS.fixer.disableStartupItem,
   IPC_CHANNELS.fixer.listServices,
+  IPC_CHANNELS.fixer.startService,
+  IPC_CHANNELS.fixer.stopService,
   IPC_CHANNELS.fixer.restartService,
+  IPC_CHANNELS.fixer.runUtilityAction,
   IPC_CHANNELS.fixer.refreshDiagnostics
 ] as const;
 
@@ -113,9 +119,27 @@ export const registerIpcHandlers = ({
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.fixer.startService,
+    async (_event, request: StartServiceRequest) =>
+      fixerService.startService(request)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.fixer.stopService,
+    async (_event, request: StopServiceRequest) =>
+      fixerService.stopService(request)
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.fixer.restartService,
     async (_event, request: RestartServiceRequest) =>
       fixerService.restartService(request)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.fixer.runUtilityAction,
+    async (_event, request: RunUtilityActionRequest) =>
+      fixerService.runUtilityAction(request)
   );
 
   ipcMain.handle(IPC_CHANNELS.fixer.refreshDiagnostics, async () =>

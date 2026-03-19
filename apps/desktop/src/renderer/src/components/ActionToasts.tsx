@@ -13,10 +13,7 @@ interface ActionToastsProps {
 export const ActionToasts = ({ toasts, onDismiss }: ActionToastsProps) => (
   <div className="toast-stack">
     {toasts.map((toast) => (
-      <article
-        key={toast.id}
-        className={`toast ${toast.result.success ? 'success' : 'failure'}`}
-      >
+      <article key={toast.id} className={`toast ${toast.result.success ? 'success' : 'failure'}`}>
         <div>
           <p className="toast-kicker">{toast.result.kind}</p>
           <h3>{toast.result.summary}</h3>
@@ -28,7 +25,7 @@ export const ActionToasts = ({ toasts, onDismiss }: ActionToastsProps) => (
           onClick={() => onDismiss(toast.id)}
           aria-label="Dismiss action result"
         >
-          ×
+          x
         </button>
       </article>
     ))}

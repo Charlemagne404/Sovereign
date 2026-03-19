@@ -214,10 +214,10 @@ const reportMainProcessFailure = (context: string, error: unknown): void => {
 
 const bootstrap = async (): Promise<void> => {
   logStartup('bootstrap:start');
-  await createMainWindow();
 
   try {
     await initializeServices();
+    await createMainWindow();
   } catch (error) {
     reportBootstrapFailure(error);
   }

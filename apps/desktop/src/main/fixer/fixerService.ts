@@ -16,6 +16,9 @@ import type {
   ExecuteTempCleanupRequest,
   KillProcessRequest,
   OpenProcessLocationRequest,
+  RunUtilityActionRequest,
+  StartServiceRequest,
+  StopServiceRequest,
   RestartServiceRequest
 } from '@shared/ipc';
 import type { DashboardService } from '@main/services/dashboardService';
@@ -24,6 +27,7 @@ import { WindowsStartupItemsProvider } from '@main/watchdog/startup/windowsStart
 
 import { TempCleanupService } from './tempCleanupService';
 import { WindowsServicesProvider } from './windows/windowsServicesProvider';
+import { WindowsUtilityActionsProvider } from './windows/windowsUtilityActionsProvider';
 
 const createResult = (
   kind: FixActionResult['kind'],
@@ -48,6 +52,7 @@ export class FixerService {
   private readonly tempCleanupService = new TempCleanupService();
   private readonly startupItemsProvider = new WindowsStartupItemsProvider();
   private readonly servicesProvider = new WindowsServicesProvider();
+  private readonly utilityActionsProvider = new WindowsUtilityActionsProvider();
 
   constructor(
     private readonly dependencies: FixerServiceDependencies
@@ -199,6 +204,100 @@ export class FixerService {
     );
   }
 
+  async startService(
+    request: StartServiceRequest
+  ): Promise<FixActionResult> {
+    if (process.platform !== 'win32') {
+      return createResult('start-service', false, 'Service control is Windows-only', [
+        'Run Sovereign on Windows 11 to start services from this panel.'
+      ]);
+    }
+
+    try {
+      const services = await this.servicesProvider.list();
+      const service = services.find((item) => item.name === request.serviceName);
+
+      if (!service) {
+        return createResult('start-service', false, 'Service no longer exists', [
+          'Refresh the service inventory and try again.'
+        ]);
+      }
+
+      if (!service.canStart) {
+        return createResult(
+          'start-service',
+          false,
+          `Service cannot be started: ${service.displayName}`,
+          [service.startSupportReason || 'The service is not currently startable from this panel.']
+        );
+      }
+
+      await this.servicesProvider.startService(service.name);
+      await this.dependencies.watchdogService.refreshNow();
+
+      return createResult(
+        'start-service',
+        true,
+        `Started service: ${service.displayName}`,
+        [`Service name: ${service.name}`, 'Windows permission failures are returned directly instead of hidden.']
+      );
+    } catch (error) {
+      return createResult(
+        'start-service',
+        false,
+        `Could not start service: ${request.displayName}`,
+        [error instanceof Error ? error.message : 'Unknown service start error.']
+      );
+    }
+  }
+
+  async stopService(
+    request: StopServiceRequest
+  ): Promise<FixActionResult> {
+    if (process.platform !== 'win32') {
+      return createResult('stop-service', false, 'Service control is Windows-only', [
+        'Run Sovereign on Windows 11 to stop services from this panel.'
+      ]);
+    }
+
+    try {
+      const services = await this.servicesProvider.list();
+      const service = services.find((item) => item.name === request.serviceName);
+
+      if (!service) {
+        return createResult('stop-service', false, 'Service no longer exists', [
+          'Refresh the service inventory and try again.'
+        ]);
+      }
+
+      if (!service.canStop) {
+        return createResult(
+          'stop-service',
+          false,
+          `Service cannot be stopped: ${service.displayName}`,
+          [service.stopSupportReason || 'The service is not currently stoppable from this panel.']
+        );
+      }
+
+      await this.servicesProvider.stopService(service.name);
+      await this.dependencies.watchdogService.refreshNow();
+
+      return createResult(
+        'stop-service',
+        true,
+        `Stopped service: ${service.displayName}`,
+        [`Service name: ${service.name}`, 'Windows permission failures are returned directly instead of hidden.']
+      );
+    } catch (error) {
+      return createResult(
+        'stop-service',
+        false,
+        `Could not stop service: ${request.displayName}`,
+        [error instanceof Error ? error.message : 'Unknown service stop error.']
+      );
+    }
+  }
+
   async restartService(
     request: RestartServiceRequest
   ): Promise<FixActionResult> {
@@ -223,7 +322,10 @@ export class FixerService {
           'restart-service',
           false,
           `Service cannot be restarted: ${service.displayName}`,
-          [service.actionSupportReason || 'The service is not currently restartable from this panel.']
+          [
+            service.restartSupportReason ||
+              'The service is not currently restartable from this panel.'
+          ]
         );
       }
 
@@ -242,6 +344,51 @@ export class FixerService {
         false,
         `Could not restart service: ${request.displayName}`,
         [error instanceof Error ? error.message : 'Unknown service restart error.']
+      );
+    }
+  }
+
+  async runUtilityAction(
+    request: RunUtilityActionRequest
+  ): Promise<FixActionResult> {
+    if (process.platform !== 'win32') {
+      return createResult(request.action, false, 'This utility is Windows-only', [
+        'Run Sovereign on Windows 11 to use this repair action.'
+      ]);
+    }
+
+    const summaries: Record<RunUtilityActionRequest['action'], string> = {
+      'flush-dns': 'Flushed the local DNS cache',
+      'restart-explorer': 'Restarted Windows Explorer',
+      'empty-recycle-bin': 'Emptied the recycle bin'
+    };
+
+    const details: Record<RunUtilityActionRequest['action'], string[]> = {
+      'flush-dns': [
+        'Windows cleared the local DNS resolver cache for the current machine.'
+      ],
+      'restart-explorer': [
+        'Explorer was stopped and started again to recover the shell without rebooting the machine.'
+      ],
+      'empty-recycle-bin': [
+        'Items currently in the recycle bin were removed using the standard Windows recycle-bin command.'
+      ]
+    };
+
+    try {
+      await this.utilityActionsProvider.run(request.action);
+      await Promise.allSettled([
+        this.dependencies.dashboardService.refreshNow(),
+        this.dependencies.watchdogService.refreshNow()
+      ]);
+
+      return createResult(request.action, true, summaries[request.action], details[request.action]);
+    } catch (error) {
+      return createResult(
+        request.action,
+        false,
+        `Could not complete ${request.action}`,
+        [error instanceof Error ? error.message : 'Unknown utility action error.']
       );
     }
   }

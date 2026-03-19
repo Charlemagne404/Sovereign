@@ -195,15 +195,24 @@ export interface ServiceSummary {
   displayName: string;
   state: 'running' | 'stopped' | 'paused' | 'unknown';
   startMode: 'automatic' | 'manual' | 'disabled' | 'unknown';
+  canStart: boolean;
+  canStop: boolean;
   canRestart: boolean;
-  actionSupportReason: string | null;
+  startSupportReason: string | null;
+  stopSupportReason: string | null;
+  restartSupportReason: string | null;
 }
 
 export type FixActionKind =
   | 'temp-cleanup'
   | 'kill-process'
   | 'open-process-location'
+  | 'start-service'
+  | 'stop-service'
   | 'restart-service'
+  | 'flush-dns'
+  | 'restart-explorer'
+  | 'empty-recycle-bin'
   | 'disable-startup-item'
   | 'refresh-diagnostics';
 

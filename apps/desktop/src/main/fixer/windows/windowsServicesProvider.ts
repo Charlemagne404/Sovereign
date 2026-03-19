@@ -80,21 +80,45 @@ export class WindowsServicesProvider {
     return rawServices.map((service) => {
       const state = mapServiceState(service.State);
       const startMode = mapStartMode(service.StartMode);
-      const canRestart = state === 'running' && startMode !== 'disabled';
+      const canStart = state === 'stopped' && startMode !== 'disabled';
+      const canStop = state === 'running';
+      const canRestart = canStop && startMode !== 'disabled';
 
       return {
         name: service.Name?.trim() || 'unknown-service',
         displayName: service.DisplayName?.trim() || service.Name?.trim() || 'Unnamed service',
         state,
         startMode,
+        canStart,
+        canStop,
         canRestart,
-        actionSupportReason: canRestart
+        startSupportReason: canStart
+          ? null
+          : state === 'running'
+            ? 'The service is already running.'
+            : 'Disabled services cannot be started until Windows allows them to run.',
+        stopSupportReason: canStop
+          ? null
+          : 'Only running services can be stopped from this panel.',
+        restartSupportReason: canRestart
           ? null
           : state !== 'running'
             ? 'Only running services can be restarted from this panel.'
             : 'Disabled services cannot be restarted until Windows allows them to start.'
       };
     });
+  }
+
+  async startService(serviceName: string): Promise<void> {
+    await runPowerShellText(
+      `Start-Service -Name ${escapePowerShellString(serviceName)} -ErrorAction Stop`
+    );
+  }
+
+  async stopService(serviceName: string): Promise<void> {
+    await runPowerShellText(
+      `Stop-Service -Name ${escapePowerShellString(serviceName)} -ErrorAction Stop`
+    );
   }
 
   async restartService(serviceName: string): Promise<void> {

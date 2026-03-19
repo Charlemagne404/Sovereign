@@ -7,6 +7,8 @@ interface ServicesPanelProps {
   actionsDisabled: boolean;
   platform: SystemMetricsSnapshot['platform'] | null;
   onSearchChange: (value: string) => void;
+  onStart: (service: ServiceSummary) => void;
+  onStop: (service: ServiceSummary) => void;
   onRestart: (service: ServiceSummary) => void;
 }
 
@@ -17,17 +19,18 @@ export const ServicesPanel = ({
   actionsDisabled,
   platform,
   onSearchChange,
+  onStart,
+  onStop,
   onRestart
 }: ServicesPanelProps) => (
   <section className="panel fixer-panel">
     <div className="panel-heading">
       <div>
         <p className="section-kicker">Repair tool</p>
-        <h2>Windows services</h2>
+        <h2>Service controls</h2>
       </div>
       <p className="panel-meta">
-        Restart with confirmation and explicit failure reporting when Windows blocks
-        the request.
+        Start, stop, or restart individual services with explicit confirmation and failure reporting.
       </p>
     </div>
 
@@ -45,25 +48,42 @@ export const ServicesPanel = ({
       <div className="fixer-content">
         <div className="inventory-list">
           {services.map((service) => (
-            <div
-              key={service.name}
-              className="inventory-row"
-            >
+            <div key={service.name} className="inventory-row">
               <div>
                 <p className="inventory-title">{service.displayName}</p>
                 <p className="inventory-copy">
                   {service.name} · {service.state} · {service.startMode}
                 </p>
               </div>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => onRestart(service)}
-                disabled={actionsDisabled || !service.canRestart}
-                title={service.actionSupportReason || 'Restart service'}
-              >
-                Restart
-              </button>
+              <div className="table-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => onStart(service)}
+                  disabled={actionsDisabled || !service.canStart}
+                  title={service.startSupportReason || 'Start service'}
+                >
+                  Start
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => onStop(service)}
+                  disabled={actionsDisabled || !service.canStop}
+                  title={service.stopSupportReason || 'Stop service'}
+                >
+                  Stop
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => onRestart(service)}
+                  disabled={actionsDisabled || !service.canRestart}
+                  title={service.restartSupportReason || 'Restart service'}
+                >
+                  Restart
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -72,7 +92,7 @@ export const ServicesPanel = ({
       <div className="fixer-empty">
         {platform === 'windows'
           ? 'No services match the current filter.'
-          : 'Service restart control is available when Sovereign runs on Windows.'}
+          : 'Service control is available when Sovereign runs on Windows.'}
       </div>
     )}
   </section>

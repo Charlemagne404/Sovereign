@@ -13,6 +13,8 @@ interface ProcessesTableProps {
   selectedProcessPid: number | null;
   isLoading: boolean;
   actionsDisabled: boolean;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
   onSelectProcess: (process: ProcessInfo) => void;
   onOpenLocation: (process: ProcessInfo) => void;
   onKillProcess: (process: ProcessInfo) => void;
@@ -23,6 +25,8 @@ export const ProcessesTable = ({
   selectedProcessPid,
   isLoading,
   actionsDisabled,
+  searchValue,
+  onSearchChange,
   onSelectProcess,
   onOpenLocation,
   onKillProcess
@@ -44,12 +48,20 @@ export const ProcessesTable = ({
     <div className="panel-heading">
       <div>
         <p className="section-kicker">Top processes</p>
-        <h2>Current resource pressure</h2>
+        <h2>Process triage</h2>
       </div>
       <p className="panel-meta">
-        Ranked by CPU first, then resident memory. Select a row for context before taking action.
+        Filter first, then inspect a row before opening its path or terminating it.
       </p>
     </div>
+
+    <input
+      type="search"
+      className="form-input"
+      value={searchValue}
+      placeholder="Filter processes by name, path, user, or PID"
+      onChange={(event) => onSearchChange(event.target.value)}
+    />
 
     <div className="table-wrapper">
       <table>
