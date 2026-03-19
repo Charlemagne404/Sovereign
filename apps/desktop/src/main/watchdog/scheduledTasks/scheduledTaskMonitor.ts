@@ -42,6 +42,7 @@ export class ScheduledTaskMonitor implements WatchdogMonitor {
   private knownTasks = new Map<string, ScheduledTaskRecord>();
   private pollTimer: NodeJS.Timeout | undefined;
   private reportedFailure = false;
+  private pollInFlight: Promise<void> | null = null;
 
   constructor(private readonly publish: EventPublisher) {}
 
@@ -99,7 +100,7 @@ export class ScheduledTaskMonitor implements WatchdogMonitor {
     }
 
     this.pollTimer = setInterval(() => {
-      void this.poll();
+      void this.runPoll();
     }, POLL_INTERVAL_MS);
   }
 
@@ -117,7 +118,17 @@ export class ScheduledTaskMonitor implements WatchdogMonitor {
       return;
     }
 
-    await this.poll();
+    await this.runPoll();
+  }
+
+  private async runPoll(): Promise<void> {
+    if (!this.pollInFlight) {
+      this.pollInFlight = this.poll().finally(() => {
+        this.pollInFlight = null;
+      });
+    }
+
+    await this.pollInFlight;
   }
 
   private async poll(): Promise<void> {

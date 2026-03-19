@@ -46,6 +46,8 @@ const EMPTY_FS_STATS: si.Systeminformation.FsStatsData = {
   ms: 0
 };
 
+const EMPTY_NETWORK_STATS: si.Systeminformation.NetworkStatsData[] = [];
+
 const clampPercentage = (value: number): number =>
   Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
 
@@ -80,6 +82,22 @@ const safeCollect = async <T>(collector: () => Promise<T>, fallback: T): Promise
   }
 };
 
+const collectArray = async <T>(
+  collector: () => Promise<T[] | null | undefined>,
+  fallback: T[] = []
+): Promise<T[]> => {
+  const result = await safeCollect(collector, fallback);
+  return Array.isArray(result) ? result : fallback;
+};
+
+const collectObject = async <T extends object>(
+  collector: () => Promise<T | null | undefined>,
+  fallback: T
+): Promise<T> => {
+  const result = await safeCollect(collector, fallback);
+  return result && typeof result === 'object' ? result : fallback;
+};
+
 export class SystemInformationProbe implements SystemProbe {
   constructor(private readonly profile: ProbeProfile) {}
 
@@ -89,16 +107,19 @@ export class SystemInformationProbe implements SystemProbe {
         si.currentLoad(),
         si.mem(),
         si.fsSize(),
-        si.networkStats('*'),
-        safeCollect(() => si.networkInterfaces(), [] as si.Systeminformation.NetworkInterfacesData[]),
+        collectArray(() => si.networkStats('*'), EMPTY_NETWORK_STATS),
+        collectArray(
+          () => si.networkInterfaces(),
+          [] as si.Systeminformation.NetworkInterfacesData[]
+        ),
         si.processes()
       ]);
     const currentTime = si.time();
     const [cpuSpeed, cpuTemperature, fsStats, userSessions] = await Promise.all([
-      safeCollect(() => si.cpuCurrentSpeed(), EMPTY_CPU_SPEED),
-      safeCollect(() => si.cpuTemperature(), EMPTY_CPU_TEMPERATURE),
-      safeCollect(() => si.fsStats(), EMPTY_FS_STATS),
-      safeCollect(() => si.users(), [] as si.Systeminformation.UserData[])
+      collectObject(() => si.cpuCurrentSpeed(), EMPTY_CPU_SPEED),
+      collectObject(() => si.cpuTemperature(), EMPTY_CPU_TEMPERATURE),
+      collectObject(() => si.fsStats(), EMPTY_FS_STATS),
+      collectArray(() => si.users(), [] as si.Systeminformation.UserData[])
     ]);
 
     const cpuUsagePercent = clampPercentage(cpuLoad.currentLoad);
@@ -121,7 +142,12 @@ export class SystemInformationProbe implements SystemProbe {
       networkInterfaces.map((networkInterface) => [networkInterface.iface, networkInterface])
     );
     const interfaceStats = networkStats
-      .filter((stat) => (stat.iface || '').length > 0)
+      .filter(
+        (
+          stat
+        ): stat is si.Systeminformation.NetworkStatsData =>
+          Boolean(stat) && typeof stat.iface === 'string' && stat.iface.length > 0
+      )
       .map((stat) => {
         const networkInterface = networkInterfaceMap.get(stat.iface);
         const receiveRate = clampPositiveRate(stat.rx_sec);

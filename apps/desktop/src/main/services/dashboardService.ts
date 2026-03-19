@@ -11,6 +11,7 @@ export class DashboardService {
   private refreshTimer: NodeJS.Timeout | undefined;
   private readonly listeners = new Set<SnapshotListener>();
   private metricsHistory: MetricsHistoryPoint[] = [];
+  private refreshInFlight: Promise<SystemMetricsSnapshot> | null = null;
 
   constructor(
     private readonly probe: SystemProbe,
@@ -19,7 +20,7 @@ export class DashboardService {
   ) {}
 
   async initialize(): Promise<void> {
-    const snapshot = await this.collectSnapshot();
+    const snapshot = await this.collectSnapshotOnce();
     this.currentSnapshot = this.attachHistory(snapshot);
   }
 
@@ -60,7 +61,7 @@ export class DashboardService {
 
   async refreshNow(): Promise<void> {
     try {
-      const snapshot = this.attachHistory(await this.collectSnapshot());
+      const snapshot = this.attachHistory(await this.collectSnapshotOnce());
       this.currentSnapshot = snapshot;
       this.listeners.forEach((listener) => listener(snapshot));
     } catch (error) {
@@ -68,8 +69,16 @@ export class DashboardService {
     }
   }
 
-  private async collectSnapshot(): Promise<SystemMetricsSnapshot> {
-    return this.probe.collectSnapshot(this.settingsStore.getSettings());
+  private async collectSnapshotOnce(): Promise<SystemMetricsSnapshot> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.probe
+        .collectSnapshot(this.settingsStore.getSettings())
+        .finally(() => {
+          this.refreshInFlight = null;
+        });
+    }
+
+    return this.refreshInFlight;
   }
 
   private attachHistory(snapshot: SystemMetricsSnapshot): SystemMetricsSnapshot {

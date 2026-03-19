@@ -26,6 +26,22 @@ interface RegisterIpcDependencies {
   onSettingsUpdated: (settings: AppSettings) => void;
 }
 
+const HANDLED_CHANNELS = [
+  IPC_CHANNELS.dashboard.getSnapshot,
+  IPC_CHANNELS.events.list,
+  IPC_CHANNELS.settings.get,
+  IPC_CHANNELS.settings.update,
+  IPC_CHANNELS.fixer.previewTempCleanup,
+  IPC_CHANNELS.fixer.executeTempCleanup,
+  IPC_CHANNELS.fixer.killProcess,
+  IPC_CHANNELS.fixer.openProcessLocation,
+  IPC_CHANNELS.fixer.listStartupItems,
+  IPC_CHANNELS.fixer.disableStartupItem,
+  IPC_CHANNELS.fixer.listServices,
+  IPC_CHANNELS.fixer.restartService,
+  IPC_CHANNELS.fixer.refreshDiagnostics
+] as const;
+
 export const registerIpcHandlers = ({
   dashboardService,
   eventStore,
@@ -34,6 +50,10 @@ export const registerIpcHandlers = ({
   watchdogService,
   onSettingsUpdated
 }: RegisterIpcDependencies): void => {
+  for (const channel of HANDLED_CHANNELS) {
+    ipcMain.removeHandler(channel);
+  }
+
   ipcMain.handle(IPC_CHANNELS.dashboard.getSnapshot, async () =>
     dashboardService.getSnapshot()
   );

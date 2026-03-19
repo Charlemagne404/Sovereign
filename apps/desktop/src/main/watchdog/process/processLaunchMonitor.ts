@@ -11,7 +11,7 @@ import type {
 } from '@main/watchdog/types';
 import { buildKey, extractCommandPath } from '@main/watchdog/helpers';
 
-const POLL_INTERVAL_MS = 4_000;
+const POLL_INTERVAL_MS = 10_000;
 const MAX_DETAILED_INFO_EVENTS = 3;
 
 const getRuleLabel = (matchedRule: string | undefined): string => {
@@ -64,6 +64,7 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
   private knownProcesses = new Map<string, ProcessSnapshot>();
   private pollTimer: NodeJS.Timeout | undefined;
   private reportedFailure = false;
+  private pollInFlight: Promise<void> | null = null;
 
   constructor(private readonly publish: EventPublisher) {}
 
@@ -106,7 +107,7 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
     }
 
     this.pollTimer = setInterval(() => {
-      void this.poll();
+      void this.runPoll();
     }, POLL_INTERVAL_MS);
   }
 
@@ -120,7 +121,17 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
   }
 
   async refreshNow(): Promise<void> {
-    await this.poll();
+    await this.runPoll();
+  }
+
+  private async runPoll(): Promise<void> {
+    if (!this.pollInFlight) {
+      this.pollInFlight = this.poll().finally(() => {
+        this.pollInFlight = null;
+      });
+    }
+
+    await this.pollInFlight;
   }
 
   private async poll(): Promise<void> {

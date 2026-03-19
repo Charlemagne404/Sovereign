@@ -1,6 +1,10 @@
 node_modules
 *.log
 .DS_Store
+.npm-cache
+.electron-cache
+.electron-builder-cache
+.localappdata
 
 apps/desktop/out
 apps/desktop/release

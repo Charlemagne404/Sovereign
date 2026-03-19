@@ -1,6 +1,6 @@
 {
   "name": "sovereign-workspace",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "workspaces": [
     "apps/desktop"
@@ -10,5 +10,8 @@
     "build": "npm run build --workspace @continental/sovereign-desktop",
     "typecheck": "npm run typecheck --workspace @continental/sovereign-desktop",
     "package:win": "npm run package:win --workspace @continental/sovereign-desktop"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
   }
 }

@@ -87,7 +87,7 @@ const VIEW_COPY: Record<
     description:
       'Tune how Sovereign scores pressure and choose which watchdog feeds stay active while the app is open.',
     helper:
-      'Settings change Sovereign’s own guidance. They do not install drivers, persistence, or background agents.'
+      "Settings change Sovereign's own guidance. They do not install drivers, persistence, or background agents."
   }
 };
 
@@ -144,8 +144,8 @@ type ConfirmationState =
 const createLoadingState = (): LoadingState => ({
   snapshot: true,
   events: true,
-  startupItems: true,
-  services: true,
+  startupItems: false,
+  services: false,
   settings: true,
   tempPreview: false
 });
@@ -195,6 +195,7 @@ export const App = () => {
 
   const applySnapshot = (nextSnapshot: SystemMetricsSnapshot): void => {
     startTransition(() => {
+      setError(null);
       setSnapshot(nextSnapshot);
       setSelectedProcessPid((currentSelection) =>
         nextSnapshot.topProcesses.some((process) => process.pid === currentSelection)
@@ -206,6 +207,7 @@ export const App = () => {
 
   const applyEvents = (nextEvents: WatchdogEvent[]): void => {
     startTransition(() => {
+      setError(null);
       setEvents(nextEvents);
       setSelectedEventId((currentSelection) =>
         nextEvents.some((event) => event.id === currentSelection)
@@ -219,6 +221,7 @@ export const App = () => {
     const clonedSettings = cloneSettings(nextSettings);
 
     startTransition(() => {
+      setError(null);
       setSettings(clonedSettings);
       setSettingsDraft(cloneSettings(clonedSettings));
     });
@@ -261,6 +264,7 @@ export const App = () => {
     try {
       const nextStartupItems = await window.sovereign.listStartupItems();
       startTransition(() => {
+        setError(null);
         setStartupItems(nextStartupItems);
       });
     } catch (cause) {
@@ -276,6 +280,7 @@ export const App = () => {
     try {
       const nextServices = await window.sovereign.listServices();
       startTransition(() => {
+        setError(null);
         setServices(nextServices);
       });
     } catch (cause) {
@@ -321,11 +326,9 @@ export const App = () => {
     let isMounted = true;
 
     const initialize = async (): Promise<void> => {
-      await Promise.all([
+      await Promise.allSettled([
         loadSettings(),
-        loadSnapshot(),
-        loadStartupItems(),
-        loadServices()
+        loadSnapshot()
       ]);
     };
 
@@ -376,6 +379,18 @@ export const App = () => {
       unsubscribe();
     };
   }, [severityFilter, categoryFilter, settings?.timelineEventLimit]);
+
+  useEffect(() => {
+    if (activeView !== 'tools') {
+      return;
+    }
+
+    if (!loading.startupItems && startupItems.length > 0 && !loading.services && services.length > 0) {
+      return;
+    }
+
+    void Promise.allSettled([loadStartupItems(), loadServices()]);
+  }, [activeView]);
 
   const handleOpenProcessLocation = async (processInfo: ProcessInfo): Promise<void> => {
     setBusyActionKey('open-process-location');
@@ -931,13 +946,16 @@ export const App = () => {
 
   return (
     <main className="app-shell">
+      <div className="shell-backdrop shell-backdrop-left" aria-hidden="true" />
+      <div className="shell-backdrop shell-backdrop-right" aria-hidden="true" />
+
       <aside className="panel rail-panel">
         <div className="brand-block">
           <div className="brand-mark">S</div>
           <div className="brand-copy">
-            <p className="section-kicker">Continental / Placeholder brand</p>
+            <p className="section-kicker">Continental Systems</p>
             <h2>Sovereign</h2>
-            <p>Transparent system control center for Windows operations.</p>
+            <p>Transparent Windows control center for system awareness and safe repair actions.</p>
           </div>
         </div>
 
@@ -1009,7 +1027,7 @@ export const App = () => {
         ) : null}
 
         <section className="panel control-panel">
-          <div>
+          <div className="control-summary">
             <p className="section-kicker">Current summary</p>
             <h2>{healthHeadline}</h2>
             <p className="control-copy">{healthSummary}</p>

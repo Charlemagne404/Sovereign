@@ -1,14 +1,16 @@
 {
   "name": "@continental/sovereign-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "productName": "Sovereign",
+  "description": "Sovereign is a transparent desktop system control center for Windows 11.",
+  "author": "Continental",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "package:win": "npm run build && electron-builder --win nsis --x64"
+    "package:win": "npm run build && set \"ELECTRON_CACHE=..\\..\\.electron-cache\" && set \"ELECTRON_BUILDER_CACHE=..\\..\\.electron-builder-cache\" && electron-builder --win nsis --x64"
   },
   "dependencies": {
     "react": "^19.2.4",
@@ -20,7 +22,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^41.0.3",
+    "electron": "^30.0.0",
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "typescript": "^5.9.3",
@@ -28,7 +30,9 @@
   },
   "build": {
     "appId": "com.continental.sovereign",
+    "electronVersion": "30.0.0",
     "productName": "Sovereign",
+    "copyright": "Copyright © 2026 Continental",
     "directories": {
       "output": "release/${version}"
     },
@@ -38,6 +42,7 @@
     ],
     "asar": true,
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         "nsis"
       ],
