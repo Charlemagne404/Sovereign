@@ -1,5 +1,5 @@
-import type { SystemMetricsSnapshot } from '@shared/models';
+import type { AppSettings, SystemMetricsSnapshot } from '@shared/models';
 
 export interface SystemProbe {
-  collectSnapshot(): Promise<SystemMetricsSnapshot>;
+  collectSnapshot(settings: AppSettings): Promise<SystemMetricsSnapshot>;
 }

@@ -8,6 +8,7 @@ export interface WatchdogMonitor {
   initialize(): Promise<void>;
   start(): void;
   stop(): void;
+  refreshNow(): Promise<void>;
 }
 
 export type EventPublisher = (
@@ -25,6 +26,11 @@ export interface ProcessSnapshot {
 }
 
 export interface StartupItemRecord extends StartupItem {
+  sourceType: 'registry' | 'folder';
+  registryHive: string | null;
+  registryPath: string | null;
+  valueName: string | null;
+  filePath: string | null;
   user: string | null;
 }
 

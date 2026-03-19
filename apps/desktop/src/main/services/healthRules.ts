@@ -1,27 +1,11 @@
 import type {
+  AppSettings,
   MetricStatus,
+  NetworkThresholds,
+  PercentThresholds,
   ResourceAdvice,
   SystemHealthSummary
 } from '@shared/models';
-
-export const HEALTH_RULES = {
-  cpu: {
-    elevated: 65,
-    stressed: 85
-  },
-  memory: {
-    elevated: 72,
-    stressed: 88
-  },
-  disk: {
-    elevated: 78,
-    stressed: 90
-  },
-  network: {
-    elevatedBytesPerSec: 8 * 1024 * 1024,
-    stressedBytesPerSec: 24 * 1024 * 1024
-  }
-} as const;
 
 type ResourceKind = 'cpu' | 'memory' | 'disk' | 'network';
 
@@ -74,7 +58,7 @@ const RESOURCE_COPY: Record<ResourceKind, Record<MetricStatus, ResourceAdvice>> 
     stressed: {
       headline: 'Disk space is constrained',
       details: 'The device is approaching a level where repairs and updates get harder.',
-      action: 'Prioritize cleanup once fixer tools are added in Phase 3.'
+      action: 'Prioritize cleanup or remove non-essential files before updates start failing.'
     }
   },
   network: {
@@ -104,7 +88,7 @@ const STATUS_WEIGHT: Record<MetricStatus, number> = {
 
 export const getPercentStatus = (
   value: number,
-  thresholds: { elevated: number; stressed: number }
+  thresholds: PercentThresholds
 ): MetricStatus => {
   if (value >= thresholds.stressed) {
     return 'stressed';
@@ -117,12 +101,15 @@ export const getPercentStatus = (
   return 'healthy';
 };
 
-export const getNetworkStatus = (valueBytesPerSec: number): MetricStatus => {
-  if (valueBytesPerSec >= HEALTH_RULES.network.stressedBytesPerSec) {
+export const getNetworkStatus = (
+  valueBytesPerSec: number,
+  thresholds: NetworkThresholds
+): MetricStatus => {
+  if (valueBytesPerSec >= thresholds.stressedBytesPerSec) {
     return 'stressed';
   }
 
-  if (valueBytesPerSec >= HEALTH_RULES.network.elevatedBytesPerSec) {
+  if (valueBytesPerSec >= thresholds.elevatedBytesPerSec) {
     return 'elevated';
   }
 
@@ -133,6 +120,10 @@ export const getResourceAdvice = (
   resource: ResourceKind,
   status: MetricStatus
 ): ResourceAdvice => RESOURCE_COPY[resource][status];
+
+export const getHealthRules = (
+  settings: AppSettings
+): AppSettings['thresholds'] => settings.thresholds;
 
 const highestStatus = (statuses: MetricStatus[]): MetricStatus =>
   statuses.reduce<MetricStatus>((current, candidate) => {

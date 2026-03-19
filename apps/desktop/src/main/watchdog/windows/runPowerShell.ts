@@ -6,6 +6,11 @@ import { parseJsonArray } from '@main/watchdog/helpers';
 const execFileAsync = promisify(execFile);
 
 export const runPowerShellJson = async <Value>(command: string): Promise<Value[]> => {
+  const stdout = await runPowerShellText(command);
+  return parseJsonArray<Value>(stdout);
+};
+
+export const runPowerShellText = async (command: string): Promise<string> => {
   if (process.platform !== 'win32') {
     throw new Error('PowerShell-backed watchdog providers are only available on Windows.');
   }
@@ -20,7 +25,7 @@ export const runPowerShellJson = async <Value>(command: string): Promise<Value[]
     }
   );
 
-  return parseJsonArray<Value>(stdout);
+  return stdout;
 };
 
 export const runPowerShellObject = async <Value>(
@@ -29,3 +34,6 @@ export const runPowerShellObject = async <Value>(
   const values = await runPowerShellJson<Value>(command);
   return values[0] ?? null;
 };
+
+export const escapePowerShellString = (value: string): string =>
+  `'${value.replace(/'/g, "''")}'`;

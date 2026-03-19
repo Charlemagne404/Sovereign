@@ -3,10 +3,12 @@ import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
 
 import { IPC_CHANNELS } from '@shared/ipc';
+import { FixerService } from '@main/fixer/fixerService';
 import { createSystemProbe } from '@main/platform/createSystemProbe';
 import { registerIpcHandlers } from '@main/ipc/registerIpc';
 import { DashboardService } from '@main/services/dashboardService';
 import { JsonEventStore } from '@main/store/jsonEventStore';
+import { JsonSettingsStore } from '@main/store/jsonSettingsStore';
 import { WatchdogService } from '@main/watchdog/watchdogService';
 
 const WINDOW_CONFIG = {
@@ -32,6 +34,7 @@ const createMainWindow = async (): Promise<void> => {
   mainWindow = new BrowserWindow({
     ...WINDOW_CONFIG,
     backgroundColor: '#09111b',
+    title: 'Sovereign',
     titleBarStyle: 'hiddenInset',
     autoHideMenuBar: true,
     webPreferences: {
@@ -57,16 +60,33 @@ const createMainWindow = async (): Promise<void> => {
 
 const bootstrap = async (): Promise<void> => {
   const eventStore = new JsonEventStore(path.join(app.getPath('userData'), 'events.json'));
+  const settingsStore = new JsonSettingsStore(path.join(app.getPath('userData'), 'settings.json'));
+
+  await settingsStore.initialize();
   await eventStore.initialize();
 
-  dashboardService = new DashboardService(createSystemProbe(), 5_000);
+  dashboardService = new DashboardService(
+    createSystemProbe(),
+    settingsStore,
+    settingsStore.getSettings().metricsRefreshIntervalMs
+  );
   await dashboardService.initialize();
 
-  watchdogService = new WatchdogService(eventStore);
+  watchdogService = new WatchdogService(eventStore, settingsStore.getSettings());
+  const fixerService = new FixerService({
+    dashboardService,
+    watchdogService
+  });
 
   registerIpcHandlers({
     dashboardService,
-    eventStore
+    eventStore,
+    settingsStore,
+    fixerService,
+    watchdogService,
+    onSettingsUpdated: (settings) => {
+      broadcastDashboardUpdate(IPC_CHANNELS.settings.updated, settings);
+    }
   });
 
   dashboardService.subscribe((snapshot) => {

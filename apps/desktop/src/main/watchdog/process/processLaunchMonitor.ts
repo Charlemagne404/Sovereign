@@ -119,6 +119,10 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
     this.pollTimer = undefined;
   }
 
+  async refreshNow(): Promise<void> {
+    await this.poll();
+  }
+
   private async poll(): Promise<void> {
     try {
       const currentProcesses = await this.captureProcesses();

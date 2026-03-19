@@ -112,6 +112,14 @@ export class ScheduledTaskMonitor implements WatchdogMonitor {
     this.pollTimer = undefined;
   }
 
+  async refreshNow(): Promise<void> {
+    if (process.platform !== 'win32') {
+      return;
+    }
+
+    await this.poll();
+  }
+
   private async poll(): Promise<void> {
     try {
       const tasks = await this.provider.list();

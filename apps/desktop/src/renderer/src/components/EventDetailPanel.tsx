@@ -24,7 +24,16 @@ export const EventDetailPanel = ({ event }: EventDetailPanelProps) => (
 
     {event ? (
       <div className="detail-content">
+        <div className="detail-callout">
+          <p className="detail-label">Assessment</p>
+          <p>{event.description}</p>
+        </div>
+
         <div className="detail-grid">
+          <div>
+            <p className="detail-label">Severity</p>
+            <p className={`severity-copy severity-${event.severity}`}>{event.severity}</p>
+          </div>
           <div>
             <p className="detail-label">Source</p>
             <p>{WATCHDOG_SOURCE_LABELS[event.source]}</p>
@@ -44,12 +53,7 @@ export const EventDetailPanel = ({ event }: EventDetailPanelProps) => (
         </div>
 
         <div className="detail-section">
-          <p className="detail-label">Assessment</p>
-          <p>{event.description}</p>
-        </div>
-
-        <div className="detail-section">
-          <p className="detail-label">Evidence</p>
+          <p className="detail-label">Supporting evidence</p>
           <ul className="detail-list">
             {event.evidence.map((item) => (
               <li key={item}>{item}</li>
@@ -57,14 +61,15 @@ export const EventDetailPanel = ({ event }: EventDetailPanelProps) => (
           </ul>
         </div>
 
-        <div className="detail-section">
+        <div className="detail-callout emphasis">
           <p className="detail-label">Recommended action</p>
           <p>{event.recommendedAction}</p>
         </div>
       </div>
     ) : (
       <div className="detail-empty">
-        Pick an event from the timeline to review its evidence and the reasoning behind its severity.
+        Pick an event from the timeline to review its evidence, severity rationale,
+        and the next step Sovereign recommends.
       </div>
     )}
   </section>

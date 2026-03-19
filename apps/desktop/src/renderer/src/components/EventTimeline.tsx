@@ -9,17 +9,23 @@ import {
 interface EventTimelineProps {
   events: WatchdogEvent[];
   selectedEventId: string | null;
+  isLoading: boolean;
+  emptyMessage?: string;
   onSelectEvent: (id: string) => void;
 }
 
 export const EventTimeline = ({
   events,
   selectedEventId,
+  isLoading,
+  emptyMessage = 'No events match the current filters.',
   onSelectEvent
 }: EventTimelineProps) => (
   <div className="timeline">
-    {events.length === 0 ? (
-      <div className="timeline-empty">No events match the current filters.</div>
+    {isLoading && events.length === 0 ? (
+      <div className="timeline-empty">Reading recent watchdog history.</div>
+    ) : events.length === 0 ? (
+      <div className="timeline-empty">{emptyMessage}</div>
     ) : (
       events.map((event) => (
         <button
