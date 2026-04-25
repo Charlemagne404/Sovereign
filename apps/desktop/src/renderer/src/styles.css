@@ -1450,6 +1450,12 @@ tbody tr[tabindex]:hover,
   gap: 16px;
 }
 
+.cleanup-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .detail-callout {
   display: flex;
   flex-direction: column;
@@ -1842,6 +1848,10 @@ tbody tr[tabindex]:hover,
   }
 
   .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cleanup-summary-grid {
     grid-template-columns: 1fr;
   }
 

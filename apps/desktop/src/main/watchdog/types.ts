@@ -29,6 +29,7 @@ export interface ProcessSnapshot {
   command: string | null;
   user: string | null;
   startedAt: string | null;
+  observedAt?: string | null;
 }
 
 export interface StartupItemRecord extends StartupItem {

@@ -298,20 +298,35 @@ export interface TempCleanupEntry {
   id: string;
   name: string;
   path: string;
+  root: string;
   sizeBytes: number;
   modifiedAt: string;
   isDirectory: boolean;
+}
+
+export interface TempCleanupRootSummary {
+  root: string;
+  itemCount: number;
+  totalBytes: number;
+  fileCount: number;
+  directoryCount: number;
 }
 
 export interface TempCleanupPreview {
   previewId: string;
   generatedAt: string;
   roots: string[];
+  rootSummaries: TempCleanupRootSummary[];
   entries: TempCleanupEntry[];
   totalBytes: number;
   itemCount: number;
+  fileCount: number;
+  directoryCount: number;
+  oldestModifiedAt: string | null;
+  largestEntry: TempCleanupEntry | null;
   skippedRecentCount: number;
   skippedErrorCount: number;
+  skippedSymlinkCount: number;
   notes: string[];
 }
 

@@ -167,4 +167,4 @@ const api: DesktopApi = {
   }
 };
 
-contextBridge.exposeInMainWorld('sovereign', api);
+contextBridge.exposeInMainWorld('sovereign', Object.freeze(api));

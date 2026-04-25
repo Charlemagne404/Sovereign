@@ -6,7 +6,6 @@ import { app, shell } from 'electron';
 
 import type {
   FixActionResult,
-  ProcessInfo,
   ServiceSummary,
   StartupBackupSummary,
   StartupItem,
@@ -162,31 +161,24 @@ export class FixerService {
   async openProcessLocation(
     request: OpenProcessLocationRequest
   ): Promise<FixActionResult> {
-    const processInfo: ProcessInfo = request.process;
-
-    if (!processInfo.path) {
-      return this.recordResult(
-        createResult('open-process-location', false, 'Process path unavailable', [
-          `Sovereign could not determine a file path for PID ${processInfo.pid}.`
-        ])
-      );
-    }
-
     try {
-      await access(processInfo.path);
-      shell.showItemInFolder(processInfo.path);
+      await access(request.path);
+      shell.showItemInFolder(request.path);
 
       return this.recordResult(
         'open-process-location',
         true,
-        `Opened the file location for ${processInfo.name}`,
-        [processInfo.path]
+        `Opened the file location for ${request.name}`,
+        [
+          request.path,
+          request.pid ? `PID ${request.pid}` : 'Opened from watchdog event or inventory context.'
+        ]
       );
     } catch (error) {
       return this.recordResult(
         'open-process-location',
         false,
-        `Could not open the file location for ${processInfo.name}`,
+        `Could not open the file location for ${request.name}`,
         [error instanceof Error ? error.message : 'Unknown file location error.']
       );
     }

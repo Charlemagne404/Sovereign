@@ -8,8 +8,18 @@ import {
   WATCHDOG_SOURCE_LABELS
 } from '../utils/watchdog';
 
+export interface EventDetailAction {
+  id: string;
+  label: string;
+  tone?: 'primary' | 'secondary' | 'danger';
+  disabled?: boolean;
+  title?: string;
+  onSelect: () => void;
+}
+
 interface EventDetailPanelProps {
   event: WatchdogEvent | null;
+  actions?: EventDetailAction[];
   suppressionLabel?: string | null;
   actionsDisabled?: boolean;
   onSuppress?: () => void;
@@ -18,6 +28,7 @@ interface EventDetailPanelProps {
 
 export const EventDetailPanel = ({
   event,
+  actions = [],
   suppressionLabel = null,
   actionsDisabled = false,
   onSuppress,
@@ -138,6 +149,32 @@ export const EventDetailPanel = ({
           <p className="detail-label">Recommended action</p>
           <p>{event.recommendedAction}</p>
         </div>
+
+        {actions.length > 0 ? (
+          <div className="detail-section">
+            <p className="detail-label">Available actions</p>
+            <div className="detail-actions">
+              {actions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className={
+                    action.tone === 'primary'
+                      ? 'primary-button'
+                      : action.tone === 'danger'
+                        ? 'table-action-button danger'
+                        : 'secondary-button'
+                  }
+                  onClick={action.onSelect}
+                  disabled={actionsDisabled || action.disabled}
+                  title={action.title}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {suppressionLabel ? (
           <div className="detail-callout">

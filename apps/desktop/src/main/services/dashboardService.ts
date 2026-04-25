@@ -11,8 +11,8 @@ export class DashboardService {
   private refreshTimer: NodeJS.Timeout | undefined;
   private readonly listeners = new Set<SnapshotListener>();
   private metricsHistory: MetricsHistoryPoint[] = [];
-  private refreshInFlight: Promise<SystemMetricsSnapshot> | null = null;
   private refreshIntervalMs: number;
+  private refreshInFlight: Promise<void> | null = null;
 
   constructor(
     private readonly probe: SystemProbe,
@@ -23,8 +23,11 @@ export class DashboardService {
   }
 
   async initialize(): Promise<void> {
-    const snapshot = await this.collectSnapshotOnce();
-    this.currentSnapshot = this.attachHistory(snapshot);
+    if (this.currentSnapshot) {
+      return;
+    }
+
+    await this.runRefreshCycle(false);
   }
 
   async getSnapshot(): Promise<SystemMetricsSnapshot> {
@@ -41,7 +44,9 @@ export class DashboardService {
     }
 
     this.refreshTimer = setInterval(() => {
-      void this.refreshNow();
+      void this.refreshNow().catch((error) => {
+        console.error('[dashboard] failed to refresh metrics', error);
+      });
     }, this.refreshIntervalMs);
   }
 
@@ -76,25 +81,27 @@ export class DashboardService {
   }
 
   async refreshNow(): Promise<void> {
-    try {
-      const snapshot = this.attachHistory(await this.collectSnapshotOnce());
-      this.currentSnapshot = snapshot;
-      this.listeners.forEach((listener) => listener(snapshot));
-    } catch (error) {
-      console.error('[dashboard] failed to refresh metrics', error);
-    }
+    await this.runRefreshCycle(true);
   }
 
-  private async collectSnapshotOnce(): Promise<SystemMetricsSnapshot> {
+  private async runRefreshCycle(notifyListeners: boolean): Promise<void> {
     if (!this.refreshInFlight) {
-      this.refreshInFlight = this.probe
-        .collectSnapshot(this.settingsStore.getSettings())
-        .finally(() => {
+      this.refreshInFlight = (async () => {
+        const snapshot = this.attachHistory(
+          await this.probe.collectSnapshot(this.settingsStore.getSettings())
+        );
+
+        this.currentSnapshot = snapshot;
+
+        if (notifyListeners) {
+          this.listeners.forEach((listener) => listener(snapshot));
+        }
+      })().finally(() => {
           this.refreshInFlight = null;
         });
     }
 
-    return this.refreshInFlight;
+    await this.refreshInFlight;
   }
 
   private attachHistory(snapshot: SystemMetricsSnapshot): SystemMetricsSnapshot {

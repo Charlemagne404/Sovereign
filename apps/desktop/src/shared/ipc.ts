@@ -1,7 +1,6 @@
 import type {
   AppSettings,
   FixActionResult,
-  ProcessInfo,
   ServiceSummary,
   StartupBackupSummary,
   StartupItem,
@@ -64,7 +63,9 @@ export interface KillProcessRequest {
 }
 
 export interface OpenProcessLocationRequest {
-  process: ProcessInfo;
+  name: string;
+  path: string;
+  pid?: number | null;
 }
 
 export interface DisableStartupItemRequest {

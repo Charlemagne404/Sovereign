@@ -17,9 +17,7 @@ interface LegacyEventStoreFile {
 }
 
 const MAX_EVIDENCE_ITEMS = 12;
-
-const sortByNewest = (left: WatchdogEvent, right: WatchdogEvent): number =>
-  Date.parse(right.timestamp) - Date.parse(left.timestamp);
+const MAX_EVENT_QUERY_LIMIT = 100;
 
 const CONFIDENCE_WEIGHT: Record<WatchdogConfidence, number> = {
   low: 0,
@@ -31,57 +29,6 @@ const SEVERITY_WEIGHT: Record<WatchdogSeverity, number> = {
   info: 0,
   unusual: 1,
   suspicious: 2
-};
-
-const applyQuery = (
-  events: WatchdogEvent[],
-  query: WatchdogEventQuery
-): WatchdogEvent[] => {
-  let filteredEvents = [...events].sort(sortByNewest);
-
-  if (query.severities?.length) {
-    filteredEvents = filteredEvents.filter((event) =>
-      query.severities?.includes(event.severity)
-    );
-  }
-
-  if (query.categories?.length) {
-    filteredEvents = filteredEvents.filter((event) =>
-      query.categories?.includes(event.category)
-    );
-  }
-
-  if (query.sources?.length) {
-    filteredEvents = filteredEvents.filter((event) =>
-      query.sources?.includes(event.source)
-    );
-  }
-
-  if (query.searchText?.trim()) {
-    const searchText = query.searchText.trim().toLowerCase();
-
-    filteredEvents = filteredEvents.filter((event) =>
-      [
-        event.title,
-        event.description,
-        event.rationale,
-        event.whyThisMatters,
-        event.recommendedAction,
-        event.source,
-        event.category,
-        event.severity,
-        event.subjectName || '',
-        event.subjectPath || '',
-        ...event.pathSignals,
-        ...event.evidence
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(searchText)
-    );
-  }
-
-  return filteredEvents.slice(0, query.limit ?? 12);
 };
 
 const dedupeStrings = (values: string[]): string[] =>
@@ -208,6 +155,42 @@ const parseLegacyEvents = async (legacyPath?: string): Promise<WatchdogEvent[]> 
   }
 };
 
+const createEventSearchText = (event: WatchdogEvent): string =>
+  [
+    event.title,
+    event.description,
+    event.rationale,
+    event.whyThisMatters,
+    event.recommendedAction,
+    event.source,
+    event.category,
+    event.severity,
+    event.kind,
+    event.subjectName || '',
+    event.subjectPath || '',
+    ...event.pathSignals,
+    ...event.evidence
+  ]
+    .join(' ')
+    .toLowerCase()
+    .trim();
+
+const serializeEventRow = (event: WatchdogEvent) => ({
+  id: event.id,
+  fingerprint: event.fingerprint,
+  timestamp: event.timestamp,
+  source: event.source,
+  category: event.category,
+  severity: event.severity,
+  kind: event.kind,
+  title: event.title,
+  description: event.description,
+  subjectName: event.subjectName,
+  subjectPath: event.subjectPath,
+  searchText: createEventSearchText(event),
+  payload: JSON.stringify(event)
+});
+
 export class SqliteEventStore implements EventStore {
   constructor(
     private readonly database: SqliteDatabase,
@@ -217,6 +200,7 @@ export class SqliteEventStore implements EventStore {
 
   async initialize(): Promise<void> {
     await this.database.initialize();
+    await this.backfillSearchColumns();
     const currentCount = await this.database.read((database) => {
       const row = this.database.queryRows(
         database,
@@ -237,16 +221,48 @@ export class SqliteEventStore implements EventStore {
   }
 
   async list(query: WatchdogEventQuery = {}): Promise<WatchdogEvent[]> {
-    const events = await this.database.read((database) =>
+    const whereClauses: string[] = [];
+    const params: Array<string | number> = [];
+
+    if (query.severities?.length) {
+      whereClauses.push(`severity IN (${query.severities.map(() => '?').join(', ')})`);
+      params.push(...query.severities);
+    }
+
+    if (query.categories?.length) {
+      whereClauses.push(`category IN (${query.categories.map(() => '?').join(', ')})`);
+      params.push(...query.categories);
+    }
+
+    if (query.sources?.length) {
+      whereClauses.push(`source IN (${query.sources.map(() => '?').join(', ')})`);
+      params.push(...query.sources);
+    }
+
+    if (query.searchText?.trim()) {
+      whereClauses.push('search_text LIKE ?');
+      params.push(`%${query.searchText.trim().toLowerCase()}%`);
+    }
+
+    const limit = Math.min(
+      Math.max(Math.round(query.limit ?? 12), 1),
+      MAX_EVENT_QUERY_LIMIT
+    );
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    return this.database.read((database) =>
       this.database
         .queryRows(
           database,
-          `SELECT payload FROM watchdog_events ORDER BY timestamp DESC`
+          `SELECT payload
+             FROM watchdog_events
+             ${whereSql}
+             ORDER BY timestamp DESC
+             LIMIT ?`,
+          [...params, limit]
         )
         .map((row) => normalizeLegacyEvent(JSON.parse(String(row.payload))))
     );
-
-    return applyQuery(events, query);
   }
 
   async append(eventsInput: WatchdogEvent | WatchdogEvent[]): Promise<void> {
@@ -267,15 +283,38 @@ export class SqliteEventStore implements EventStore {
               incomingEvent
             )
           : incomingEvent;
+        const serializedRow = serializeEventRow(nextEvent);
 
         database.run(
-          `INSERT OR REPLACE INTO watchdog_events (id, fingerprint, timestamp, payload)
-           VALUES (?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO watchdog_events (
+             id,
+             fingerprint,
+             timestamp,
+             source,
+             category,
+             severity,
+             kind,
+             title,
+             description,
+             subject_name,
+             subject_path,
+             search_text,
+             payload
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            nextEvent.id,
-            nextEvent.fingerprint,
-            nextEvent.timestamp,
-            JSON.stringify(nextEvent)
+            serializedRow.id,
+            serializedRow.fingerprint,
+            serializedRow.timestamp,
+            serializedRow.source,
+            serializedRow.category,
+            serializedRow.severity,
+            serializedRow.kind,
+            serializedRow.title,
+            serializedRow.description,
+            serializedRow.subjectName,
+            serializedRow.subjectPath,
+            serializedRow.searchText,
+            serializedRow.payload
           ]
         );
       }
@@ -289,6 +328,56 @@ export class SqliteEventStore implements EventStore {
          )`,
         [this.maxEvents]
       );
+    });
+  }
+
+  private async backfillSearchColumns(): Promise<void> {
+    const rowsNeedingBackfill = await this.database.read((database) =>
+      this.database.queryRows(
+        database,
+        `SELECT id, payload
+           FROM watchdog_events
+           WHERE search_text = '' OR title = '' OR description = ''`
+      )
+    );
+
+    if (rowsNeedingBackfill.length === 0) {
+      return;
+    }
+
+    await this.database.write((database) => {
+      for (const row of rowsNeedingBackfill) {
+        const event = normalizeLegacyEvent(JSON.parse(String(row.payload)));
+        const serializedRow = serializeEventRow(event);
+
+        database.run(
+          `UPDATE watchdog_events
+              SET source = ?,
+                  category = ?,
+                  severity = ?,
+                  kind = ?,
+                  title = ?,
+                  description = ?,
+                  subject_name = ?,
+                  subject_path = ?,
+                  search_text = ?,
+                  payload = ?
+            WHERE id = ?`,
+          [
+            serializedRow.source,
+            serializedRow.category,
+            serializedRow.severity,
+            serializedRow.kind,
+            serializedRow.title,
+            serializedRow.description,
+            serializedRow.subjectName,
+            serializedRow.subjectPath,
+            serializedRow.searchText,
+            serializedRow.payload,
+            serializedRow.id
+          ]
+        );
+      }
     });
   }
 }

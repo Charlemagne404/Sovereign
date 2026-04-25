@@ -12,6 +12,8 @@ import type {
 } from '@main/watchdog/types';
 import { buildKey, extractCommandPath } from '@main/watchdog/helpers';
 
+import { WindowsProcessLaunchEventSource } from './windowsProcessLaunchEventSource';
+
 const POLL_INTERVAL_MS = 10_000;
 const MAX_DETAILED_INFO_EVENTS = 3;
 
@@ -25,15 +27,19 @@ const toProcessSnapshot = (
   path: process.path || null,
   command: process.command || null,
   user: process.user || null,
-  startedAt: process.started || null
+  startedAt: process.started || null,
+  observedAt: null
 });
 
 export class ProcessLaunchMonitor implements WatchdogMonitor {
   private readonly fileTrustProvider = new FileTrustProvider();
+  private readonly realtimeEventSource =
+    process.platform === 'win32' ? new WindowsProcessLaunchEventSource() : null;
   private knownProcesses = new Map<string, ProcessSnapshot>();
   private pollTimer: NodeJS.Timeout | undefined;
   private reportedFailure = false;
   private pollInFlight: Promise<void> | null = null;
+  private usingRealtimeFeed = false;
 
   constructor(private readonly publish: EventPublisher) {}
 
@@ -60,7 +66,9 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
             'A baseline makes later process launches easier to explain without pretending that every new process is suspicious.',
           evidence: [
             `Baseline captured for ${baselineProcesses.length} running processes.`,
-            `Polling interval: ${Math.round(POLL_INTERVAL_MS / 1000)} seconds.`,
+            process.platform === 'win32'
+              ? 'Windows uses Win32_ProcessStartTrace for real-time process launches and falls back to polling if that feed stops.'
+              : `Polling interval: ${Math.round(POLL_INTERVAL_MS / 1000)} seconds.`,
             'Launches from temp, Downloads, and AppData paths are elevated by explainable heuristics.'
           ],
           recommendedAction:
@@ -70,7 +78,10 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
 
       return {
         baselineItemCount: baselineProcesses.length,
-        note: 'Comparing the live process table every 10 seconds.'
+        note:
+          process.platform === 'win32'
+            ? 'Watching Win32_ProcessStartTrace with polling fallback.'
+            : 'Comparing the live process table every 10 seconds.'
       };
     } catch (error) {
       await this.publish(
@@ -101,22 +112,31 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
   }
 
   start(): void {
-    if (this.pollTimer) {
+    if (this.usingRealtimeFeed || this.pollTimer) {
       return;
     }
 
-    this.pollTimer = setInterval(() => {
-      void this.runPoll();
-    }, POLL_INTERVAL_MS);
+    if (
+      this.realtimeEventSource?.start(
+        async (snapshot) => {
+          await this.handleRealtimeLaunch(snapshot);
+        },
+        (error) => {
+          void this.handleRealtimeFeedFailure(error);
+        }
+      )
+    ) {
+      this.usingRealtimeFeed = true;
+      return;
+    }
+
+    this.startPolling();
   }
 
   stop(): void {
-    if (!this.pollTimer) {
-      return;
-    }
-
-    clearInterval(this.pollTimer);
-    this.pollTimer = undefined;
+    this.usingRealtimeFeed = false;
+    this.realtimeEventSource?.stop();
+    this.stopPolling();
   }
 
   async refreshNow(): Promise<void> {
@@ -144,13 +164,13 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
       );
 
       this.knownProcesses = currentProcessMap;
+      this.reportedFailure = false;
 
       if (newProcesses.length === 0) {
         return;
       }
 
       await this.publish(await this.buildLaunchEvents(newProcesses));
-      this.reportedFailure = false;
     } catch (error) {
       if (this.reportedFailure) {
         return;
@@ -178,6 +198,74 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
         })
       );
     }
+  }
+
+  private startPolling(): void {
+    if (this.pollTimer) {
+      return;
+    }
+
+    this.pollTimer = setInterval(() => {
+      void this.runPoll();
+    }, POLL_INTERVAL_MS);
+  }
+
+  private stopPolling(): void {
+    if (!this.pollTimer) {
+      return;
+    }
+
+    clearInterval(this.pollTimer);
+    this.pollTimer = undefined;
+  }
+
+  private async handleRealtimeLaunch(snapshot: ProcessSnapshot): Promise<void> {
+    if (this.knownProcesses.has(snapshot.key)) {
+      return;
+    }
+
+    this.knownProcesses.set(snapshot.key, snapshot);
+    await this.publish(await this.buildLaunchEvents([snapshot]));
+    this.reportedFailure = false;
+  }
+
+  private async handleRealtimeFeedFailure(error: Error): Promise<void> {
+    if (!this.usingRealtimeFeed) {
+      return;
+    }
+
+    this.usingRealtimeFeed = false;
+    this.startPolling();
+
+    if (this.reportedFailure) {
+      return;
+    }
+
+    this.reportedFailure = true;
+
+    await this.publish(
+      createWatchdogEvent({
+        source: 'process-launch',
+        category: 'process',
+        severity: 'info',
+        kind: 'status',
+        confidence: 'low',
+        title: 'Real-time process launch monitoring fell back to polling',
+        description:
+          'Sovereign could not keep the Windows real-time process-start feed open and switched back to a polling fallback.',
+        rationale:
+          'The Win32_ProcessStartTrace event stream exited or returned an error, so Sovereign resumed diffing the live process table.',
+        whyThisMatters:
+          'Polling remains transparent and safe, but it can miss short-lived launches that start and exit between refreshes.',
+        evidence: [
+          error.message,
+          `Polling interval: ${Math.round(POLL_INTERVAL_MS / 1000)} seconds.`
+        ],
+        recommendedAction:
+          'If this keeps happening, refresh diagnostics and compare with native Windows process tools.',
+        fingerprint: buildKey('process-launch', 'realtime-feed-fallback')
+      })
+    );
   }
 
   private async captureProcesses(): Promise<ProcessSnapshot[]> {
@@ -239,6 +327,7 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
           subjectPath: executablePath,
           pathSignals: pathAssessment.labels,
           fileTrust,
+          occurredAt: process.observedAt || undefined,
           fingerprint: buildKey(
             'process-launch',
             process.name,
@@ -284,6 +373,7 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
             subjectName: process.name,
             subjectPath: executablePath,
             fileTrust,
+            occurredAt: process.observedAt || undefined,
             fingerprint: buildKey('process-launch', process.name, executablePath, 'baseline')
           })
         );
@@ -316,6 +406,11 @@ export class ProcessLaunchMonitor implements WatchdogMonitor {
         recommendedAction:
           'Use the filters to focus on unusual or suspicious activity first, then inspect the process table for more detail.',
         relatedEventCount: informationalProcesses.length,
+        occurredAt:
+          informationalProcesses
+            .map((process) => process.observedAt)
+            .filter((value): value is string => Boolean(value))
+            .sort((left, right) => Date.parse(right) - Date.parse(left))[0] || undefined,
         fingerprint: buildKey('process-launch-summary', 'multiple-new-processes')
       })
     );

@@ -32,10 +32,20 @@ export class TempCleanupService {
 
     const roots = [...new Set([path.resolve(os.tmpdir())])];
     const entries: TempCleanupEntry[] = [];
+    const rootSummaries = new Map<string, TempCleanupPreview['rootSummaries'][number]>();
     let skippedRecentCount = 0;
     let skippedErrorCount = 0;
+    let skippedSymlinkCount = 0;
 
     for (const root of roots) {
+      rootSummaries.set(root, {
+        root,
+        itemCount: 0,
+        totalBytes: 0,
+        fileCount: 0,
+        directoryCount: 0
+      });
+
       try {
         const dirents = await readdir(root, { withFileTypes: true });
 
@@ -46,7 +56,7 @@ export class TempCleanupService {
             const stats = await lstat(candidatePath);
 
             if (stats.isSymbolicLink()) {
-              skippedErrorCount += 1;
+              skippedSymlinkCount += 1;
               continue;
             }
 
@@ -59,12 +69,24 @@ export class TempCleanupService {
               id: randomUUID(),
               name: dirent.name,
               path: candidatePath,
+              root,
               sizeBytes: await this.getEntrySize(candidatePath),
               modifiedAt: new Date(stats.mtimeMs).toISOString(),
               isDirectory: stats.isDirectory()
             };
 
             entries.push(entry);
+            const rootSummary = rootSummaries.get(root);
+
+            if (rootSummary) {
+              rootSummary.itemCount += 1;
+              rootSummary.totalBytes += entry.sizeBytes;
+              if (entry.isDirectory) {
+                rootSummary.directoryCount += 1;
+              } else {
+                rootSummary.fileCount += 1;
+              }
+            }
           } catch {
             skippedErrorCount += 1;
           }
@@ -75,6 +97,8 @@ export class TempCleanupService {
     }
 
     const sortedEntries = entries.sort(sortLargestFirst);
+    const fileCount = sortedEntries.filter((entry) => !entry.isDirectory).length;
+    const directoryCount = sortedEntries.length - fileCount;
     const previewId = randomUUID();
     this.previewCache.set(previewId, {
       createdAt: Date.now(),
@@ -85,15 +109,27 @@ export class TempCleanupService {
       previewId,
       generatedAt: new Date().toISOString(),
       roots,
+      rootSummaries: [...rootSummaries.values()],
       entries: sortedEntries,
       totalBytes: sortedEntries.reduce((sum, entry) => sum + entry.sizeBytes, 0),
       itemCount: sortedEntries.length,
+      fileCount,
+      directoryCount,
+      oldestModifiedAt:
+        [...sortedEntries]
+          .sort((left, right) => Date.parse(left.modifiedAt) - Date.parse(right.modifiedAt))[0]
+          ?.modifiedAt || null,
+      largestEntry: sortedEntries[0] || null,
       skippedRecentCount,
       skippedErrorCount,
+      skippedSymlinkCount,
       notes: [
         'Only top-level items inside the current user temp root are included.',
         'Only items older than 24 hours are eligible for cleanup.',
-        'Locked or permission-protected items will be reported instead of silently ignored.'
+        'Locked or permission-protected items will be reported instead of silently ignored.',
+        skippedSymlinkCount > 0
+          ? `${skippedSymlinkCount} symbolic link${skippedSymlinkCount === 1 ? ' was' : 's were'} skipped to avoid deleting through indirect paths.`
+          : 'Symbolic links are skipped to avoid deleting through indirect paths.'
       ]
     };
   }

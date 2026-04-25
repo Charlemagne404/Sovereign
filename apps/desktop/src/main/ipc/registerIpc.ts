@@ -1,26 +1,26 @@
 import { ipcMain } from 'electron';
 
 import { IPC_CHANNELS } from '@shared/ipc';
-import type {
-  DisableStartupItemRequest,
-  EventsListRequest,
-  ExecuteTempCleanupRequest,
-  KillProcessRequest,
-  ListActionHistoryRequest,
-  OpenProcessLocationRequest,
-  RunUtilityActionRequest,
-  RestoreStartupItemRequest,
-  StartServiceRequest,
-  StopServiceRequest,
-  RestartServiceRequest,
-  UpdateSettingsRequest
-} from '@shared/ipc';
 import type { AppSettings } from '@shared/models';
 import type { DashboardService } from '@main/services/dashboardService';
 import type { EventStore } from '@main/store/eventStore';
 import type { SettingsStore } from '@main/store/settingsStore';
 import type { FixerService } from '@main/fixer/fixerService';
 import type { WatchdogService } from '@main/watchdog/watchdogService';
+import {
+  validateDisableStartupItemRequest,
+  validateEventsListRequest,
+  validateExecuteTempCleanupRequest,
+  validateKillProcessRequest,
+  validateListActionHistoryRequest,
+  validateOpenProcessLocationRequest,
+  validateRestartServiceRequest,
+  validateRestoreStartupItemRequest,
+  validateRunUtilityActionRequest,
+  validateStartServiceRequest,
+  validateStopServiceRequest,
+  validateUpdateSettingsRequest
+} from './validation';
 
 interface RegisterIpcDependencies {
   dashboardService: DashboardService;
@@ -76,16 +76,17 @@ export const registerIpcHandlers = ({
 
   ipcMain.handle(
     IPC_CHANNELS.events.list,
-    async (_event, request: EventsListRequest | undefined) =>
-      eventStore.list(request)
+    async (_event, request: unknown) =>
+      eventStore.list(validateEventsListRequest(request))
   );
 
   ipcMain.handle(IPC_CHANNELS.settings.get, async () => settingsStore.getSettings());
 
   ipcMain.handle(
     IPC_CHANNELS.settings.update,
-    async (_event, request: UpdateSettingsRequest) => {
-      const settings = await settingsStore.updateSettings(request);
+    async (_event, request: unknown) => {
+      const validatedRequest = validateUpdateSettingsRequest(request);
+      const settings = await settingsStore.updateSettings(validatedRequest);
       await watchdogService.updateSettings(settings);
       dashboardService.updateSettings(settings);
       await dashboardService.refreshNow();
@@ -100,19 +101,20 @@ export const registerIpcHandlers = ({
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.executeTempCleanup,
-    async (_event, request: ExecuteTempCleanupRequest) =>
-      fixerService.executeTempCleanup(request)
+    async (_event, request: unknown) =>
+      fixerService.executeTempCleanup(validateExecuteTempCleanupRequest(request))
   );
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.killProcess,
-    async (_event, request: KillProcessRequest) => fixerService.killProcess(request)
+    async (_event, request: unknown) =>
+      fixerService.killProcess(validateKillProcessRequest(request))
   );
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.openProcessLocation,
-    async (_event, request: OpenProcessLocationRequest) =>
-      fixerService.openProcessLocation(request)
+    async (_event, request: unknown) =>
+      fixerService.openProcessLocation(validateOpenProcessLocationRequest(request))
   );
 
   ipcMain.handle(IPC_CHANNELS.fixer.listStartupItems, async () =>
@@ -125,14 +127,14 @@ export const registerIpcHandlers = ({
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.disableStartupItem,
-    async (_event, request: DisableStartupItemRequest) =>
-      fixerService.disableStartupItem(request)
+    async (_event, request: unknown) =>
+      fixerService.disableStartupItem(validateDisableStartupItemRequest(request))
   );
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.restoreStartupItem,
-    async (_event, request: RestoreStartupItemRequest) =>
-      fixerService.restoreStartupItem(request)
+    async (_event, request: unknown) =>
+      fixerService.restoreStartupItem(validateRestoreStartupItemRequest(request))
   );
 
   ipcMain.handle(IPC_CHANNELS.fixer.listServices, async () =>
@@ -141,32 +143,32 @@ export const registerIpcHandlers = ({
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.startService,
-    async (_event, request: StartServiceRequest) =>
-      fixerService.startService(request)
+    async (_event, request: unknown) =>
+      fixerService.startService(validateStartServiceRequest(request))
   );
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.stopService,
-    async (_event, request: StopServiceRequest) =>
-      fixerService.stopService(request)
+    async (_event, request: unknown) =>
+      fixerService.stopService(validateStopServiceRequest(request))
   );
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.restartService,
-    async (_event, request: RestartServiceRequest) =>
-      fixerService.restartService(request)
+    async (_event, request: unknown) =>
+      fixerService.restartService(validateRestartServiceRequest(request))
   );
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.listActionHistory,
-    async (_event, request: ListActionHistoryRequest | undefined) =>
-      fixerService.listActionHistory(request)
+    async (_event, request: unknown) =>
+      fixerService.listActionHistory(validateListActionHistoryRequest(request))
   );
 
   ipcMain.handle(
     IPC_CHANNELS.fixer.runUtilityAction,
-    async (_event, request: RunUtilityActionRequest) =>
-      fixerService.runUtilityAction(request)
+    async (_event, request: unknown) =>
+      fixerService.runUtilityAction(validateRunUtilityActionRequest(request))
   );
 
   ipcMain.handle(IPC_CHANNELS.fixer.refreshDiagnostics, async () =>

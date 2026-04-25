@@ -9,18 +9,16 @@ import type {
   StartupItem,
   SystemMetricsSnapshot,
   TempCleanupPreview,
-  WatchdogCategory,
   WatchdogEvent,
-  WatchdogMonitorRuntime,
-  WatchdogSeverity,
-  WatchdogSourceId
+  WatchdogMonitorRuntime
 } from '@shared/models';
 import { DEFAULT_APP_SETTINGS } from '@shared/models';
+import { cloneSettings } from '@shared/settings';
 
 import { ActionHistoryPanel } from './components/ActionHistoryPanel';
 import { ActionToasts, type ActionToastItem } from './components/ActionToasts';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { EventDetailPanel } from './components/EventDetailPanel';
+import { EventDetailPanel, type EventDetailAction } from './components/EventDetailPanel';
 import { EventFilters } from './components/EventFilters';
 import { EventTimeline } from './components/EventTimeline';
 import { MetricCard } from './components/MetricCard';
@@ -37,7 +35,12 @@ import { TelemetryTrendsPanel } from './components/TelemetryTrendsPanel';
 import { TempCleanupPanel } from './components/TempCleanupPanel';
 import { WatchdogCoveragePanel } from './components/WatchdogCoveragePanel';
 import { WorkloadInsightsPanel } from './components/WorkloadInsightsPanel';
+import { useWatchdogTimeline } from './hooks/useWatchdogTimeline';
 import { derivePostureInsight } from './utils/controlCenter';
+import {
+  findMatchingProcessForEvent,
+  findMatchingStartupItemForEvent
+} from './utils/eventActions';
 import {
   formatBytes,
   formatClock,
@@ -68,6 +71,12 @@ type LoadingState = {
   settings: boolean;
   actionHistory: boolean;
   tempPreview: boolean;
+};
+
+type OpenLocationTarget = {
+  name: string;
+  path: string;
+  pid?: number | null;
 };
 
 type ConfirmationState =
@@ -247,9 +256,6 @@ const createLoadingState = (): LoadingState => ({
   tempPreview: false
 });
 
-const cloneSettings = (settings: AppSettings): AppSettings =>
-  JSON.parse(JSON.stringify(settings)) as AppSettings;
-
 const serializeSettings = (settings: AppSettings | null): string =>
   settings ? JSON.stringify(settings) : '';
 
@@ -263,7 +269,6 @@ export const App = () => {
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [snapshot, setSnapshot] = useState<SystemMetricsSnapshot | null>(null);
   const [monitorStatuses, setMonitorStatuses] = useState<WatchdogMonitorRuntime[]>([]);
-  const [events, setEvents] = useState<WatchdogEvent[]>([]);
   const [actionHistory, setActionHistory] = useState<FixActionResult[]>([]);
   const [startupItems, setStartupItems] = useState<StartupItem[]>([]);
   const [startupBackups, setStartupBackups] = useState<StartupBackupSummary[]>([]);
@@ -275,11 +280,6 @@ export const App = () => {
   const [settingsSaveMessage, setSettingsSaveMessage] = useState<string | null>(null);
   const [settingsSaveError, setSettingsSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState<LoadingState>(createLoadingState);
-  const [severityFilter, setSeverityFilter] = useState<'all' | WatchdogSeverity>('all');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | WatchdogCategory>('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | WatchdogSourceId>('all');
-  const [eventSearch, setEventSearch] = useState('');
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedProcessPid, setSelectedProcessPid] = useState<number | null>(null);
   const [processSearch, setProcessSearch] = useState('');
   const [startupSearch, setStartupSearch] = useState('');
@@ -301,18 +301,6 @@ export const App = () => {
         nextSnapshot.topProcesses.some((process) => process.pid === currentSelection)
           ? currentSelection
           : nextSnapshot.topProcesses[0]?.pid || null
-      );
-    });
-  };
-
-  const applyEvents = (nextEvents: WatchdogEvent[]): void => {
-    startTransition(() => {
-      setError(null);
-      setEvents(nextEvents);
-      setSelectedEventId((currentSelection) =>
-        nextEvents.some((event) => event.id === currentSelection)
-          ? currentSelection
-          : nextEvents[0]?.id || null
       );
     });
   };
@@ -372,26 +360,6 @@ export const App = () => {
       setError(getErrorMessage(cause, 'Unable to read watchdog monitor status.'));
     } finally {
       setLoadingState('monitorStatuses', false);
-    }
-  };
-
-  const loadEvents = async (): Promise<void> => {
-    setLoadingState('events', true);
-
-    try {
-      applyEvents(
-        await window.sovereign.listRecentEvents({
-          limit: settings?.timelineEventLimit ?? DEFAULT_APP_SETTINGS.timelineEventLimit,
-          severities: severityFilter === 'all' ? undefined : [severityFilter],
-          categories: categoryFilter === 'all' ? undefined : [categoryFilter],
-          sources: sourceFilter === 'all' ? undefined : [sourceFilter],
-          searchText: eventSearch.trim() || undefined
-        })
-      );
-    } catch (cause) {
-      setError(getErrorMessage(cause, 'Unable to refresh the watchdog timeline.'));
-    } finally {
-      setLoadingState('events', false);
     }
   };
 
@@ -466,6 +434,28 @@ export const App = () => {
       setLoadingState('settings', false);
     }
   };
+
+  const {
+    visibleEvents,
+    hiddenSuppressedCount,
+    selectedEvent,
+    selectedEventSuppression,
+    isLoading: isEventsLoading,
+    severityFilter,
+    setSeverityFilter,
+    categoryFilter,
+    setCategoryFilter,
+    sourceFilter,
+    setSourceFilter,
+    eventSearch,
+    setEventSearch,
+    setSelectedEventId,
+    loadEvents
+  } = useWatchdogTimeline({
+    settings,
+    onError: setError,
+    onClearError: () => setError(null)
+  });
 
   const dismissToast = (toastId: string): void => {
     setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
@@ -549,27 +539,6 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const refreshEvents = async (): Promise<void> => {
-      if (isMounted) {
-        await loadEvents();
-      }
-    };
-
-    void refreshEvents();
-
-    const unsubscribe = window.sovereign.onEventsUpdated(() => {
-      void refreshEvents();
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [severityFilter, categoryFilter, sourceFilter, eventSearch, settings?.timelineEventLimit]);
-
-  useEffect(() => {
     const preferredTheme =
       settingsDraft?.theme ?? settings?.theme ?? DEFAULT_APP_SETTINGS.theme;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
@@ -608,16 +577,34 @@ export const App = () => {
     void Promise.allSettled([loadStartupItems(), loadStartupBackups(), loadServices()]);
   }, [activeView]);
 
-  const handleOpenProcessLocation = async (processInfo: ProcessInfo): Promise<void> => {
+  const handleOpenLocation = async (target: OpenLocationTarget): Promise<void> => {
     setBusyActionKey('open-process-location');
 
     try {
-      pushToast(await window.sovereign.openProcessLocation({ process: processInfo }));
+      pushToast(
+        await window.sovereign.openProcessLocation({
+          name: target.name,
+          path: target.path,
+          pid: target.pid ?? null
+        })
+      );
     } catch (cause) {
       setError(getErrorMessage(cause, 'Unable to open the selected process location.'));
     } finally {
       setBusyActionKey(null);
     }
+  };
+
+  const handleOpenProcessLocation = async (processInfo: ProcessInfo): Promise<void> => {
+    if (!processInfo.path) {
+      return;
+    }
+
+    await handleOpenLocation({
+      name: processInfo.name,
+      path: processInfo.path,
+      pid: processInfo.pid
+    });
   };
 
   const handlePreviewTempCleanup = async (): Promise<void> => {
@@ -940,10 +927,6 @@ export const App = () => {
     )
     .slice(0, 10);
 
-  const visibleEvents = settings?.watchdog.showSuppressedEvents
-    ? events
-    : events.filter((event) => !findMatchingSuppression(event, settings?.watchdog.suppressions || []));
-  const hiddenSuppressedCount = events.length - visibleEvents.length;
   const postureInsight = derivePostureInsight(
     snapshot,
     visibleEvents,
@@ -974,12 +957,30 @@ export const App = () => {
   const networkUsagePercent = snapshot
     ? Math.min((snapshot.network.totalBytesPerSec / networkGaugeMax) * 100, 100)
     : 0;
-  const selectedEvent =
-    visibleEvents.find((event) => event.id === selectedEventId) ?? visibleEvents[0] ?? null;
   const selectedProcess =
     filteredProcesses.find((process) => process.pid === selectedProcessPid) ??
     filteredProcesses[0] ??
     null;
+  const matchedEventProcess =
+    selectedEvent && snapshot
+      ? findMatchingProcessForEvent(selectedEvent, snapshot.topProcesses)
+      : null;
+  const matchedEventStartupItem = selectedEvent
+    ? findMatchingStartupItemForEvent(selectedEvent, startupItems)
+    : null;
+  const eventOpenLocationTarget: OpenLocationTarget | null = matchedEventProcess?.path
+    ? {
+        name: matchedEventProcess.name,
+        path: matchedEventProcess.path,
+        pid: matchedEventProcess.pid
+      }
+    : selectedEvent?.subjectPath
+      ? {
+          name: selectedEvent.subjectName || selectedEvent.title,
+          path: selectedEvent.subjectPath,
+          pid: matchedEventProcess?.pid ?? null
+        }
+      : null;
   const busiestNetworkInterface = snapshot?.network.interfaces[0] ?? null;
   const suspiciousEventCount = visibleEvents.filter(
     (event) => event.severity === 'suspicious'
@@ -993,10 +994,71 @@ export const App = () => {
     (status) => status.state === 'degraded'
   ).length;
   const failedActionCount = actionHistory.filter((result) => !result.success).length;
-  const selectedEventSuppression =
-    selectedEvent && settings
-      ? findMatchingSuppression(selectedEvent, settings.watchdog.suppressions)
-      : null;
+  const eventDetailActions: EventDetailAction[] = selectedEvent
+    ? ([
+        eventOpenLocationTarget
+          ? {
+              id: 'open-event-location',
+              label: 'Open file location',
+              tone: 'secondary',
+              onSelect: () => {
+                void handleOpenLocation(eventOpenLocationTarget);
+              }
+            }
+          : null,
+        matchedEventProcess
+          ? {
+              id: 'kill-event-process',
+              label: 'End matching process',
+              tone: 'danger',
+              onSelect: () => {
+                setConfirmation({
+                  kind: 'kill-process',
+                  title: `End process: ${matchedEventProcess.name}`,
+                  description:
+                    'This sends an explicit termination signal to the process matched from the selected watchdog event. Continue only if you understand the impact on the running application.',
+                  confirmLabel: 'End process',
+                  process: matchedEventProcess
+                });
+              }
+            }
+          : null,
+        matchedEventStartupItem
+          ? {
+              id: 'disable-event-startup-item',
+              label: 'Disable startup item',
+              tone: 'secondary',
+              disabled: !matchedEventStartupItem.canDisable,
+              title:
+                matchedEventStartupItem.actionSupportReason || 'Disable startup item',
+              onSelect: () => {
+                setConfirmation({
+                  kind: 'disable-startup-item',
+                  title: `Disable startup item: ${matchedEventStartupItem.name}`,
+                  description:
+                    'This removes the selected startup entry from the active startup path. Sovereign records backup metadata locally so the change can be traced later.',
+                  confirmLabel: 'Disable startup item',
+                  startupItem: matchedEventStartupItem
+                });
+              }
+            }
+          : null,
+        selectedEvent.category === 'security' ||
+        selectedEvent.source === 'scheduled-tasks' ||
+        selectedEvent.kind === 'status'
+          ? {
+              id: 'refresh-from-event',
+              label: 'Re-check diagnostics',
+              tone: 'primary',
+              onSelect: () => {
+                void handleRefreshDiagnostics();
+              }
+            }
+          : null
+      ] as Array<EventDetailAction | null>).filter(
+        (action): action is EventDetailAction => action !== null
+      )
+    : [];
   const cpuDetailParts = snapshot
     ? [
         `${snapshot.cpu.coreCount} logical cores`,
@@ -1276,7 +1338,7 @@ export const App = () => {
           <EventTimeline
             events={visibleEvents}
             selectedEventId={selectedEvent?.id || null}
-            isLoading={loading.events}
+            isLoading={isEventsLoading}
             emptyMessage={
               hiddenSuppressedCount > 0
                 ? `No visible events match the current filters. ${hiddenSuppressedCount} event${hiddenSuppressedCount === 1 ? '' : 's'} ${hiddenSuppressedCount === 1 ? 'is' : 'are'} hidden by suppressions.`
@@ -1287,6 +1349,7 @@ export const App = () => {
         </section>
         <EventDetailPanel
           event={selectedEvent}
+          actions={eventDetailActions}
           suppressionLabel={selectedEventSuppression?.label || null}
           actionsDisabled={actionsDisabled}
           onSuppress={

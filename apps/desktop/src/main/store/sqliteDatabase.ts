@@ -45,6 +45,15 @@ CREATE TABLE IF NOT EXISTS watchdog_events (
   id TEXT PRIMARY KEY,
   fingerprint TEXT NOT NULL UNIQUE,
   timestamp TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'watchdog',
+  category TEXT NOT NULL DEFAULT 'application',
+  severity TEXT NOT NULL DEFAULT 'info',
+  kind TEXT NOT NULL DEFAULT 'status',
+  title TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  subject_name TEXT,
+  subject_path TEXT,
+  search_text TEXT NOT NULL DEFAULT '',
   payload TEXT NOT NULL
 );
 
@@ -61,9 +70,30 @@ CREATE INDEX IF NOT EXISTS idx_action_history_timestamp
   ON action_history(timestamp DESC);
 `;
 
+const WATCHDOG_EVENT_COLUMN_DEFINITIONS = {
+  source: `TEXT NOT NULL DEFAULT 'watchdog'`,
+  category: `TEXT NOT NULL DEFAULT 'application'`,
+  severity: `TEXT NOT NULL DEFAULT 'info'`,
+  kind: `TEXT NOT NULL DEFAULT 'status'`,
+  title: `TEXT NOT NULL DEFAULT ''`,
+  description: `TEXT NOT NULL DEFAULT ''`,
+  subject_name: 'TEXT',
+  subject_path: 'TEXT',
+  search_text: `TEXT NOT NULL DEFAULT ''`
+} as const;
+
+const WATCHDOG_EVENT_INDEXES = [
+  `CREATE INDEX IF NOT EXISTS idx_watchdog_events_source_timestamp
+   ON watchdog_events(source, timestamp DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_watchdog_events_category_timestamp
+   ON watchdog_events(category, timestamp DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_watchdog_events_severity_timestamp
+   ON watchdog_events(severity, timestamp DESC)`
+] as const;
+
 export class SqliteDatabase {
   private databasePromise: Promise<SqlJsDatabase> | null = null;
-  private writeQueue = Promise.resolve();
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly databasePath: string) {}
 
@@ -79,13 +109,25 @@ export class SqliteDatabase {
   async write<T>(writer: (database: SqlJsDatabase) => T | Promise<T>): Promise<T> {
     let result: T | undefined;
 
-    this.writeQueue = this.writeQueue.then(async () => {
+    const operation = this.writeQueue.catch(() => undefined).then(async () => {
       const database = await this.getDatabase();
-      result = await writer(database);
+
+      database.run('BEGIN');
+
+      try {
+        result = await writer(database);
+        database.run('COMMIT');
+      } catch (error) {
+        database.run('ROLLBACK');
+        throw error;
+      }
+
       await this.persist(database);
     });
 
-    await this.writeQueue;
+    this.writeQueue = operation.then(() => undefined, () => undefined);
+
+    await operation;
     return result as T;
   }
 
@@ -128,6 +170,7 @@ export class SqliteDatabase {
       : new sqlJs.Database();
 
     database.run(SCHEMA_SQL);
+    this.ensureWatchdogEventSchema(database);
     database.run(
       `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schemaVersion', '1')`
     );
@@ -154,5 +197,25 @@ export class SqliteDatabase {
 
   private async persist(database: SqlJsDatabase): Promise<void> {
     await writeFile(this.databasePath, database.export());
+  }
+
+  private ensureWatchdogEventSchema(database: SqlJsDatabase): void {
+    const existingColumns = new Set(
+      this.queryRows(database, 'PRAGMA table_info(watchdog_events)').map((row) =>
+        String(row.name || '')
+      )
+    );
+
+    for (const [columnName, definition] of Object.entries(WATCHDOG_EVENT_COLUMN_DEFINITIONS)) {
+      if (existingColumns.has(columnName)) {
+        continue;
+      }
+
+      database.run(`ALTER TABLE watchdog_events ADD COLUMN ${columnName} ${definition}`);
+    }
+
+    for (const statement of WATCHDOG_EVENT_INDEXES) {
+      database.run(statement);
+    }
   }
 }
